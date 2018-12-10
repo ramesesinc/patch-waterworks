@@ -1,0 +1,69 @@
+import com.rameses.annotations.*;
+import com.rameses.functions.*;
+
+/***************************************************
+* This service will update each record and set the billrefno
+* The billrefno is the printed number on paper e.g. a receipt 
+* if the client passed a printed list (i.e. list of ids successfully printed), 
+* update it first to printed then process next batch
+*****************************************************/
+
+class WaterworksBatchBillPrintingService {
+	
+	@Service
+	def self;
+
+	@DataContext('waterworks_billing')
+	def billEm; 
+
+	@DataContext('vw_waterworks_billing')
+	def vwbillEm; 
+
+	@ProxyMethod
+	public def formatReport( def o ) {
+		return [];
+	}
+
+	//process records by 10;
+	@ProxyMethod 
+	def process( param ) { 
+		if ( !param.batchid ) 
+			throw new Exception("batchid is reqiuired in WaterworksBatchBillPrintingService.process "); 
+		if ( !param.refbillno ) 
+			throw new Exception("refbillno is reqiuired in WaterworksBatchBillPrintingService.process "); 
+		
+		if (!(param.refbillno instanceof Number)) 
+			throw new Exception("refbillno must be number"); 
+		if ( param.refbillno <= 0 ) 
+			throw new Exception("refbillno must be greater than zero"); 
+
+		if ( param.printed_list ) {
+			def list = param.printed_list; 
+			def str = "('" + list.join("','") + "')"; 
+			billEm.where( "objid IN " + str ).update([ printed: 1 ]); 
+		} 
+
+		def wherebuff = new StringBuilder(); 
+		wherebuff.append(" printed=0 and hold=0 and meterstate <> 'DEFECTIVE' and acctstate = 'ACTIVE' "); 
+		if ( param.acctno ) { 
+			wherebuff.append(" and acctno = '"+ param.acctno +"' ");
+		} else if ( param.startseqno && param.startseqno > 0 ) { 
+			wherebuff.append(" and indexno >= "+ param.startseqno ); 
+		} 
+
+		def blist = vwbillEm.find([ batchid: param.batchid ]).where( wherebuff.toString() ).orderBy("billno").list(0,10);
+		if ( !blist ) return []; 
+
+		def idx = param.refbillno;
+		blist.each {
+			def u = [ refbillno: idx++ ];
+			billEm.find([ objid: it.objid ]).update( u );
+			it.refbillno = u.refbillno;
+		} 
+
+		def plist = self.formatReport( blist );
+		if ( !plist ) throw new Exception("WaterworksBatchBillPrintingService.process error! Please override WaterworksBatchBillPrintingService.process @After");
+
+		return [list: plist, refbillno: idx, printed_list: blist*.objid ];
+	} 
+} 
