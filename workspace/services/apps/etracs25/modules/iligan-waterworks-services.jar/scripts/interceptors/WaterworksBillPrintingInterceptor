@@ -5,6 +5,9 @@ class WaterworksBillPrintingInterceptor{
 	@Service("TemplateService")
 	def template;
 
+    @Service('DateService') 
+    def dateSvc;    
+
     @DataContext('vw_waterworks_billing') 
     def bill_db;
 
@@ -51,6 +54,12 @@ class WaterworksBillPrintingInterceptor{
         p.seqno = p.indexno.toString().padLeft(4,'0'); 
         p.blockseqno = p.zonecode.toString() +"-"+ p.seqno.toString(); 
 
+        boolean has_discount = false; 
+        def rundate = dateSvc.getBasicServerDate(); 
+        if ( isDateBetween( p.readingdate, p.discdate, rundate )) {
+            has_discount = true; 
+        }
+
         p.billmonth = (p.toperiod instanceof Date ? MMM_YYYY.format(p.toperiod) : null) ;
         p.discdate = (p.discdate instanceof Date ? MMDDYYYY.format(p.discdate) : null) ;
         p.readingdate = (p.readingdate instanceof Date ? MMDDYYYY.format(p.readingdate) : null) ;
@@ -81,9 +90,14 @@ class WaterworksBillPrintingInterceptor{
         if ((totals.arrears + totals.surcharge + totals.interest) > 0) {
             p.discdate = null; 
             totals.amtwithdisc = null; 
-        } else {
+        } 
+        else if ( has_discount ) {
             totals.discount = roundNearest10((totals.amount * 0.05)); 
             totals.amtwithdisc = totals.amount - totals.discount; 
+        }
+        else {
+            p.discdate = null; 
+            totals.amtwithdisc = null; 
         } 
 
         def amt1 = (totals.amount + totals.otherfees + totals.arrears); 
@@ -169,4 +183,13 @@ class WaterworksBillPrintingInterceptor{
         def bd = new java.math.BigDecimal(value.toString()); 
         return bd.setScale(1, java.math.RoundingMode.HALF_UP);
     }    
+
+    private boolean isDateBetween( startdate, enddate, rundate ) { 
+        if ( startdate == null ) startdate = enddate; 
+        if ( enddate == null ) enddate = startdate; 
+        if (!(startdate && enddate)) return false; 
+        boolean b1 = ( rundate.equals( startdate) || rundate.after( startdate));
+        boolean b2 = ( rundate.equals( enddate) || rundate.before( enddate)); 
+        return (b1 && b2); 
+    }
 }
