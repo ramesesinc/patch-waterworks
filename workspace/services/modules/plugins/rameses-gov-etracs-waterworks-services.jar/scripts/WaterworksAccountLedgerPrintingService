@@ -75,7 +75,8 @@ class WaterworksAccountLedgerPrintingService {
     	def MY = new java.text.SimpleDateFormat("MM-yy");
     	def MDY = new java.text.SimpleDateFormat("MM/dd/yy");
     	def d = new StringBuilder(); 
-    	def balance = 0.0;
+    	def balance = 0.0; 
+        def prevcredits = 0.0; 
     	items.each{ a-> 
     		def readingdate = (a.batch?.readingdate ? a.batch.readingdate : a.readingdate); 
     		if ( readingdate instanceof Date ) readingdate = MDY.format(readingdate);
@@ -100,11 +101,21 @@ class WaterworksAccountLedgerPrintingService {
                 a.amount = a.amount - discamt; 
             }
 
-            if ( balance < 0 ) balance = 0.0; 
+            if ( balance < 0 ) { 
+                prevcredits = balance * -1.0; 
+                balance = 0.0; 
+            } 
 
-            a.debit = a.amount;
+            def newcredits = 0.0; 
+            a.debit = a.amount - prevcredits;
+            if ( a.debit <= 0 ) { 
+                newcredits = a.debit * -1.0; 
+                a.debit = 0.0;
+            } 
+            prevcredits = 0.0; 
+
             a.credit = a.amtpaid + a.bill.credits;    		
-    		a.balance = (balance + a.debit) - a.credit; 
+    		a.balance = (balance + a.debit) - a.credit - newcredits; 
     		balance = a.balance; 
 
     		d.append(format(readingdate, 9, 0)).append(" "); 
@@ -115,7 +126,7 @@ class WaterworksAccountLedgerPrintingService {
     		d.append(formatNumber(a.surcharge, 11, 2, '#,##0.00')).append(" "); 
     		d.append(formatNumber(a.debit, 11, 2, '#,##0.00')).append(" "); 
     		d.append(formatNumber(a.credit, 11, 2, '#,##0.00')).append(" "); 
-    		d.append(formatNumber(balance, 13, 2, '#,##0.00')).append(" "); 
+    		d.append(formatNumber(a.balance, 13, 2, '#,##0.00')).append(" "); 
     		d.append(format(a.receiptno, 7, 0)).append(" "); 
     		d.append(format(receiptdate, 9, 0));
     		d.append("\n");  
