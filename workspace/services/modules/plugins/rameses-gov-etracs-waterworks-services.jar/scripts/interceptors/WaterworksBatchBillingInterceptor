@@ -30,6 +30,9 @@ class WaterworksBatchBillingInterceptor {
 	@DataContext("waterworks_billing")
 	def wbillEm;
 
+	@DataContext("vw_waterworks_billing_schedule")
+	def wschedEm;
+
 	@Before(pattern="PersistenceService.create", eval="#{ args[0]._schemaname == 'waterworks_batch_billing' }")
 	public void beforeCreate( evt ) { 
 		def o = evt.args[0];
@@ -104,14 +107,33 @@ class WaterworksBatchBillingInterceptor {
 	@Before(pattern="PersistenceService.removeEntity", eval="#{ args[0]._schemaname == 'waterworks_batch_billing'}")
 	void beforeRemoveEntity( evt ) {
 		def p = evt.args[0]; 
-		if ( batchEm.find([ objid: p.objid ]).select('task.state').val()?.state != 'draft' )
+		def bb = batchEm.find([ objid: p.objid ]).select('objid,zoneid,task.state').first(); 
+		if ( bb?.task?.state != 'draft' )
 			throw new Exception('Transaction must be in draft state');  
 
 		wbillEm.find([ batchid: p.objid ]).delete(); 
 		wcEm.find( [batchid: p.objid ] ).delete();
 		batchEm.find([ objid: p.objid ]).update([ taskid: '{NULL}' ]); 
 		taskEm.find([ refid: p.objid ]).delete();
-		zoneEm.find( [batchid: p.objid] ).update( [batchid: '{NULL}' ]);
+
+		def currentbillid = null; 
+		def nextscheduleid = null; 
+		def cbz = batchEm.findCurrentBillByZone([ zoneid: bb.zoneid ]); 
+		if ( cbz ) {
+			def datestr = ''+ cbz.year +'-'+ cbz.month.toString().padLeft(2,'0') +'-01'; 
+			def dateobj = new com.rameses.util.DateBean( datestr ); 
+			dateobj.add('1M');
+			def ny = dateobj.year; 
+			def nm = dateobj.month;
+			def sked = skedSvc.getSchedule([ year: ny, month: nm, scheduleid: cbz.zonescheduleid ]); 
+			nextscheduleid = sked?.objid; 
+			currentbillid = cbz.objid; 
+		}
+
+		zoneEm.find([ objid: bb.zoneid ]).update([ 
+			batchid: ( currentbillid ? currentbillid : '{NULL}'), 
+			nextscheduleid: ( nextscheduleid ? nextscheduleid : '{NULL}') 
+		]); 
 	}
 
 	@Before(pattern="WorkflowTaskService.signal", eval="#{ args[0].processname == 'waterworks_batch_billing' && args[0].taskstate == 'approved' && args[0].action == 'revert'  }")
@@ -133,8 +155,10 @@ class WaterworksBatchBillingInterceptor {
 	public void afterSignal( evt ) {
 		if ( evt.result?.state.toString() == 'end' ) { 
 			def batchid = evt.result.refid; 
+			def bb = batchEm.find([ objid: batchid ]).select('objid,zoneid').first();
 			batchEm.find([ objid: batchid ]).update([ state: 'COMPLETED' ]); 
 			wcEm.find([ batchid: batchid ]).update([ state: 'POSTED' ]);  
+			zoneEm.find([ objid: bb.zoneid ]).update([ batchid: batchid ]); 
 		} 
 	} 
 } 

@@ -49,3 +49,15 @@ WHERE wbb.objid = $P{batchid}
 	and wb.batchid = wbb.objid 
 	and wa.objid = wb.acctid 
 	and wm.objid = wa.meterid 
+
+
+[findCurrentBillByZone]
+select 
+	bb.objid, bb.scheduleid, bs.year, bs.month, 
+	bb.zoneid, z.schedule_objid as zonescheduleid 
+from waterworks_batch_billing bb 
+	inner join waterworks_billing_schedule bs on bs.objid = bb.scheduleid 
+	inner join waterworks_zone z on z.objid = bb.zoneid 
+where bb.zoneid = $P{zoneid} 
+	and bb.state in ('POSTED','COMPLETED') 
+order by ((bs.year * 12)+bs.month) desc 
