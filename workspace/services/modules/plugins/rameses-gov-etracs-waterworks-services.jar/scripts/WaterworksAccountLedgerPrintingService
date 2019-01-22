@@ -101,35 +101,28 @@ class WaterworksAccountLedgerPrintingService {
                 a.amount = a.amount - discamt; 
             }
 
-            def newcredits = 0.0; 
-            a.debit = a.amount - prevcredits;
-            if ( a.debit < 0 ) { 
-                newcredits = a.debit * -1.0; 
-                a.debit = 0.0;
-            } 
-            prevcredits = 0.0; 
-
+            a.debit = a.amount + a.bill.surcharge; 
             a.credit = a.amtpaid; 
             if ( a.amtpaid > 0 ) {
                 a.credit += a.bill.credits; 
             }
 
+            def newcredits = prevcredits; 
             a.balance = a.debit - a.credit; 
-            if ( a.balance == 0 ) {
-                a.balance = (newcredits > 0 ? newcredits * -1.0 : 0.0); 
-            }
-            else if ( a.balance < 0 ) {
+            if ( a.balance < 0 ) {
                 newcredits += (a.balance * -1.0); 
                 a.balance = (newcredits * -1.0); 
             } 
-            else {
-                a.balance += balance; 
+            else if ( a.balance == 0 ) {
+                a.balance = (newcredits > 0 ? newcredits * -1.0 : 0.0);
             }
-
-            if ( newcredits > 0 ) {
-                prevcredits = newcredits; 
-                newcredits = 0.0; 
+            else { 
+                a.balance += balance; 
+                a.balance -= newcredits; 
+                newcredits = (a.balance < 0 ? a.balance * -1.0 : 0.0); 
             } 
+
+            prevcredits = newcredits; 
             balance = (a.balance > 0 ? a.balance : 0.0); 
 
     		d.append(format(readingdate, 9, 0)).append(" "); 
